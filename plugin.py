@@ -1,25 +1,31 @@
 """
 AI智能回复过滤器插件 (AI Reply Filter)
 
-通过调用AI模型分析每条消息，智能判断是否需要回复。
-支持私聊/群聊独立配置，可设置群组白名单/黑名单过滤。
-**v1.2优化**: 精简配置项，更易用！
+通过调用AI模型分析每条消息,智能判断是否需要回复。
+支持私聊/群聊独立配置,可设置群组白名单/黑名单过滤。
+**v1.4新增**: 消息合并等待模式,智能收集连续消息!
 
 ## 主要功能
 
-- **AI智能判断**: 使用AI模型分析消息内容，决定是否需要回复
-- **自动人设识别**: 自动从数据库读取频道配置的人设，无需手动配置
-- **智能上下文感知**: 自动获取历史聊天记录，理解对话连贯性
+- **AI智能判断**: 使用AI模型分析消息内容,决定是否需要回复
+- **消息合并等待**: 等待一段时间收集用户连续发送的多条消息,合并处理提升理解准确度
+- **完全接管模式**: 可选择完全接管回复控制,阻止不需要回复的消息触发随机回复
+- **自动人设识别**: 自动从数据库读取频道配置的人设,无需手动配置
+- **智能上下文感知**: 自动获取历史聊天记录,理解对话连贯性
 - **私聊/群聊独立控制**: 可分别为私聊和群聊设置不同的过滤规则
-- **群组过滤**: 支持群组白名单和黑名单，精确控制生效范围
+- **群组过滤**: 支持群组白名单和黑名单,精确控制生效范围
 - **自定义提示词**: 可自定义AI判断的系统提示词
-- **智能缓存**: 自动缓存AI判断结果，减少重复调用
+- **智能缓存**: 自动缓存AI判断结果,减少重复调用
 
 ## 配置说明
 
 ### 1. 基础配置
 - **启用私聊过滤**: 是否在私聊频道启用AI过滤
 - **启用群聊过滤**: 是否在群聊频道启用AI过滤
+- **完全接管模式**: 启用后完全阻止不需要回复的消息,包括随机回复
+- **启用消息合并等待**: 等待收集连续消息后合并处理
+- **消息合并等待时间**: 等待收集消息的时间(秒)
+- **最大合并消息数**: 单次最多合并的消息数量
 - **AI分析模型组**: 用于消息分析的AI模型组
 
 ### 2. 群组过滤配置
@@ -27,8 +33,8 @@ AI智能回复过滤器插件 (AI Reply Filter)
 - **群组ID列表**: 白名单或黑名单的群组ID列表
 
 ### 3. AI判断配置
-- **自动使用频道人设**: 是否自动读取频道配置的人设（推荐开启）
-- **上下文消息数量**: 判断时包含的历史消息数量（建议5-10条）
+- **自动使用频道人设**: 是否自动读取频道配置的人设(推荐开启)
+- **上下文消息数量**: 判断时包含的历史消息数量(建议5-10条)
 - **系统提示词**: 指导AI如何判断消息是否需要回复
 
 ## 使用场景
@@ -40,7 +46,7 @@ AI智能回复过滤器插件 (AI Reply Filter)
 ### 场景2: 根据人设过滤
 - 插件自动读取频道配置的人设
 - AI根据人设判断消息是否符合回复范围
-- 例如：编程助手人设只回复编程相关问题
+- 例如:编程助手人设只回复编程相关问题
 
 ### 场景3: 群组精准控制
 - 只在指定的几个群组中启用AI过滤
@@ -51,14 +57,24 @@ AI智能回复过滤器插件 (AI Reply Filter)
 - 判断消息是否与当前对话主题相关
 - 过滤掉无关的插话或闲聊
 
+### 场景5: 完全接管回复控制
+- 启用完全接管模式后,AI判断不需要回复的消息将完全阻止
+- 阻止随机回复触发,只在AI明确判断需要回复时才响应
+- 适合需要精确控制回复时机的场景
+
+### 场景6: 消息合并处理
+- 用户经常连续发送多条消息表达完整意思
+- 启用消息合并后,等待用户发完再统一处理
+- AI能看到完整上下文,提供更准确的回复
+
 ## 工作原理
 
 1. **消息拦截**: 通过用户消息回调拦截所有消息
 2. **范围检查**: 检查频道类型和群组是否在过滤范围内
-3. **人设读取**: 自动从数据库读取频道关联的人设（如果有）
+3. **人设读取**: 自动从数据库读取频道关联的人设(如果有)
 4. **上下文获取**: 自动获取最近N条聊天记录作为上下文
 5. **AI分析**: 调用AI模型分析消息内容
-6. **决策执行**: 根据AI返回结果决定是否允许触发回复
+6. **决策执行**: 根据AI返回结果和接管模式决定是否允许触发回复
 """
 
 import json
@@ -82,8 +98,8 @@ from nekro_agent.services.plugin.base import NekroPlugin, ConfigBase
 plugin = NekroPlugin(
     name="AI自主判断是否回复",
     module_name="ai_reply_filter",
-    description="通过AI模型智能分析消息内容，判断是否需要触发回复。支持自动读取频道人设和聊天记录，私聊/群聊独立配置，群组过滤。",
-    version="1.2.2",
+    description="通过AI模型智能分析消息内容,判断是否需要触发回复。支持自动读取频道人设和聊天记录,私聊/群聊独立配置,群组过滤,完全接管模式,消息合并等待。",
+    version="1.4.0",
     author="xiaojiu",
     url="https://github.com/miuzhaii/ai_reply_filter",
     support_adapter=["onebot_v11", "discord", "telegram", "wechatpad", "wxwork"],
@@ -106,6 +122,12 @@ class AIReplyFilterConfig(ConfigBase):
         default=True,
         title="启用群聊过滤",
         description="是否在群聊频道启用AI智能过滤功能",
+    )
+
+    ENABLE_COMPLETE_TAKEOVER: bool = Field(
+        default=False,
+        title="完全接管模式",
+        description="启用后,AI判断不需要回复的消息将完全阻止触发(包括随机回复)。禁用时,只处理主动触发的情况,不影响随机回复。",
     )
 
     # AI模型配置
@@ -152,6 +174,25 @@ class AIReplyFilterConfig(ConfigBase):
         description="判断时包含的历史消息数量。0=不使用上下文，1-20=包含最近N条消息。建议值：5-10条。带上上下文可以让AI更好地理解对话连贯性。",
     )
 
+    # 消息合并配置
+    ENABLE_MESSAGE_MERGE: bool = Field(
+        default=False,
+        title="启用消息合并等待",
+        description="启用后,触发回复时会等待一段时间收集后续消息再处理。适合用户连发多条消息的场景。",
+    )
+
+    MESSAGE_MERGE_WAIT_TIME: float = Field(
+        default=10.0,
+        title="消息合并等待时间(秒)",
+        description="触发回复后等待的时间,用于收集后续消息。建议5-15秒。",
+    )
+
+    MESSAGE_MERGE_MAX_COUNT: int = Field(
+        default=5,
+        title="最大合并消息数",
+        description="单次最多合并的消息数量,达到后立即处理。0表示不限制。",
+    )
+
 
 
 # 获取配置和插件存储
@@ -162,6 +203,10 @@ store = plugin.store
 CACHE_EXPIRE_SECONDS = 300  # 缓存过期时间：5分钟
 AI_TIMEOUT = 10  # AI判断超时时间：10秒
 BLOCK_MODE = 1  # 阻止模式：1=阻止AI响应但保存记录
+
+# 消息合并状态管理
+merge_tasks: Dict[str, dict] = {}  # chat_key -> {messages, ctx, task, created_at}
+merge_locks: Dict[str, "asyncio.Lock"] = {}  # chat_key -> Lock
 
 
 # region: 缓存管理
@@ -482,6 +527,122 @@ def should_filter_group(channel_id: str) -> bool:
 # endregion: 群组过滤逻辑
 
 
+# region: 消息合并逻辑
+
+import asyncio
+from copy import copy
+
+
+async def get_merge_lock(chat_key: str) -> asyncio.Lock:
+    """获取或创建频道的锁"""
+    if chat_key not in merge_locks:
+        merge_locks[chat_key] = asyncio.Lock()
+    return merge_locks[chat_key]
+
+
+async def handle_with_merge(_ctx: AgentCtx, message: ChatMessage, chat_key: str) -> MsgSignal:
+    """
+    使用消息合并模式处理消息
+    
+    Args:
+        _ctx: Agent上下文
+        message: 用户消息
+        chat_key: 聊天频道标识
+    
+    Returns:
+        MsgSignal: 总是返回BLOCK_TRIGGER，实际回复由合并处理触发
+    """
+    lock = await get_merge_lock(chat_key)
+    
+    async with lock:
+        if chat_key in merge_tasks:
+            # 已有等待任务，将消息加入队列
+            task_info = merge_tasks[chat_key]
+            task_info['messages'].append(message)
+            
+            core.logger.info(f"[消息合并] 加入消息到等待队列，当前数量: {len(task_info['messages'])}")
+            
+            # 检查是否达到最大数量
+            if config.MESSAGE_MERGE_MAX_COUNT > 0 and len(task_info['messages']) >= config.MESSAGE_MERGE_MAX_COUNT:
+                core.logger.info(f"[消息合并] 达到最大数量 {config.MESSAGE_MERGE_MAX_COUNT}，立即处理")
+                task_info['task'].cancel()
+            
+            return MsgSignal.BLOCK_TRIGGER
+        else:
+            # 创建新的等待任务
+            core.logger.info(f"[消息合并] 创建新的等待任务，等待时间: {config.MESSAGE_MERGE_WAIT_TIME}秒")
+            
+            task_info = {
+                'messages': [message],
+                'ctx': _ctx,
+                'created_at': time.time(),
+            }
+            
+            # 启动定时器
+            timer_task = asyncio.create_task(
+                wait_and_process(chat_key)
+            )
+            task_info['task'] = timer_task
+            merge_tasks[chat_key] = task_info
+            
+            return MsgSignal.BLOCK_TRIGGER
+
+
+async def wait_and_process(chat_key: str):
+    """等待指定时间后处理合并的消息"""
+    try:
+        core.logger.info(f"[消息合并] 启动等待计时器")
+        await asyncio.sleep(config.MESSAGE_MERGE_WAIT_TIME)
+        core.logger.info(f"[消息合并] 等待时间到，开始处理消息")
+        await process_merged_messages(chat_key)
+    except asyncio.CancelledError:
+        core.logger.info(f"[消息合并] 计时器被取消，立即处理消息")
+        await process_merged_messages(chat_key)
+    except Exception as e:
+        core.logger.error(f"[消息合并] 等待处理异常: {e}", exc_info=True)
+
+
+async def process_merged_messages(chat_key: str):
+    """处理合并的消息并触发AI回复"""
+    lock = await get_merge_lock(chat_key)
+    
+    async with lock:
+        if chat_key not in merge_tasks:
+            return
+        
+        task_info = merge_tasks[chat_key]
+        messages = task_info['messages']
+        ctx = task_info['ctx']
+        
+        # 合并消息内容
+        merged_texts = [msg.content_text for msg in messages]
+        merged_content = "\n".join(merged_texts)
+        
+        core.logger.info(f"[消息合并] 合并了 {len(messages)} 条消息进行处理")
+        core.logger.debug(f"[消息合并] 合并内容: {merged_content[:200]}...")
+        
+        # 清理任务
+        del merge_tasks[chat_key]
+        
+        # 手动触发AI回复
+        # 使用push_system_message将合并后的内容作为系统消息推送,并触发AI
+        try:
+            from nekro_agent.services.message_service import message_service
+            
+            await message_service.push_system_message(
+                chat_key=chat_key,
+                agent_messages=f"用户连续发送了 {len(messages)} 条消息,已合并为:\n{merged_content}",
+                trigger_agent=True,
+            )
+            
+            core.logger.info(f"[消息合并] 成功触发AI回复")
+        except Exception as e:
+            core.logger.error(f"[消息合并] 触发AI回复失败: {e}", exc_info=True)
+
+
+# endregion: 消息合并逻辑
+
+
 # region: 插件初始化
 
 @plugin.mount_init_method()
@@ -502,6 +663,11 @@ async def initialize_plugin():
     core.logger.info(f"[AI回复过滤器] 群聊过滤: {'启用' if config.ENABLE_GROUP else '禁用'}")
     core.logger.info(f"[AI回复过滤器] 群组过滤模式: {config.GROUP_FILTER_MODE}")
     core.logger.info(f"[AI回复过滤器] 群组列表: {config.GROUP_ID_LIST}")
+    core.logger.info(f"[AI回复过滤器] 完全接管模式: {'启用' if config.ENABLE_COMPLETE_TAKEOVER else '禁用'}")
+    core.logger.info(f"[AI回复过滤器] 消息合并模式: {'启用' if config.ENABLE_MESSAGE_MERGE else '禁用'}")
+    if config.ENABLE_MESSAGE_MERGE:
+        core.logger.info(f"[AI回复过滤器] 消息合并等待时间: {config.MESSAGE_MERGE_WAIT_TIME}秒")
+        core.logger.info(f"[AI回复过滤器] 最大合并消息数: {config.MESSAGE_MERGE_MAX_COUNT}")
 
     core.logger.success(f"插件 '{plugin.name}' 初始化完成。")
 
@@ -563,13 +729,25 @@ async def handle_user_message(_ctx: AgentCtx, message: ChatMessage) -> MsgSignal
         should_reply = await ai_should_reply(message_text, chat_key)
 
         if should_reply:
-            # AI判断需要回复，返回FORCE_TRIGGER强制触发AI回复
-            core.logger.info("[AI回复过滤器] AI判断：需要回复，返回FORCE_TRIGGER强制触发")
-            return MsgSignal.FORCE_TRIGGER
+            # AI判断需要回复
+            if config.ENABLE_MESSAGE_MERGE:
+                # 使用消息合并模式
+                core.logger.info("[AI回复过滤器] AI判断:需要回复,启用消息合并模式")
+                return await handle_with_merge(_ctx, message, chat_key)
+            else:
+                # 立即触发(原有行为)
+                core.logger.info("[AI回复过滤器] AI判断:需要回复,返回FORCE_TRIGGER强制触发")
+                return MsgSignal.FORCE_TRIGGER
         else:
-            # AI判断不需要回复，阻止触发但保存记录
-            core.logger.info("[AI回复过滤器] AI判断：不需要回复，阻止触发（保存记录）")
-            return MsgSignal.BLOCK_TRIGGER
+            # AI判断不需要回复,根据完全接管模式决定返回信号
+            if config.ENABLE_COMPLETE_TAKEOVER:
+                # 完全接管模式:完全阻止,包括随机回复
+                core.logger.info("[AI回复过滤器] AI判断:不需要回复,完全接管模式,返回BLOCK_ALL完全阻止")
+                return MsgSignal.BLOCK_ALL
+            else:
+                # 非完全接管模式:阻止触发但保存记录,允许随机回复
+                core.logger.info("[AI回复过滤器] AI判断:不需要回复,返回BLOCK_TRIGGER(允许随机回复)")
+                return MsgSignal.BLOCK_TRIGGER
 
     except Exception as e:
         # 异常情况默认放行并触发，避免阻塞正常对话
