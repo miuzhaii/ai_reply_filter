@@ -117,13 +117,10 @@ class AIReplyFilterConfig(ConfigBase):
     )
 
     # 群组过滤配置
-    GROUP_FILTER_MODE: str = Field(
+    GROUP_FILTER_MODE: Literal["禁用", "白名单", "黑名单"] = Field(
         default="禁用",
         title="群组过滤模式",
         description="禁用=所有群组都应用过滤，白名单=仅列表中的群组生效，黑名单=排除列表中的群组",
-        json_schema_extra={
-            "enum": ["禁用", "白名单", "黑名单"]
-        }
     )
 
     GROUP_ID_LIST: list[str] = Field(
