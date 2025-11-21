@@ -64,7 +64,7 @@ AI智能回复过滤器插件 (AI Reply Filter)
 import json
 import re
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Literal
 
 from pydantic import Field
 
@@ -117,14 +117,10 @@ class AIReplyFilterConfig(ConfigBase):
     )
 
     # 群组过滤配置
-    GROUP_FILTER_MODE: str = Field(
-        default="disabled",
+    GROUP_FILTER_MODE: Literal["禁用", "白名单", "黑名单"] = Field(
+        default="禁用",
         title="群组过滤模式",
-        description="disabled=禁用群组过滤，whitelist=白名单模式（仅列表中的群组生效），blacklist=黑名单模式（排除列表中的群组）",
-        json_schema_extra={
-            "enum": ["disabled", "whitelist", "blacklist"],
-            "enumNames": ["禁用", "白名单", "黑名单"]
-        }
+        description="禁用=所有群组都应用过滤，白名单=仅列表中的群组生效，黑名单=排除列表中的群组",
     )
 
     GROUP_ID_LIST: list[str] = Field(
@@ -439,7 +435,7 @@ def should_filter_group(channel_id: str) -> bool:
     Returns:
         bool: True表示需要过滤，False表示不过滤
     """
-    if config.GROUP_FILTER_MODE == "disabled":
+    if config.GROUP_FILTER_MODE == "禁用":
         # 禁用群组过滤，所有群组都过滤
         return True
 
@@ -469,12 +465,12 @@ def should_filter_group(channel_id: str) -> bool:
     if not is_in_list:
         core.logger.info(f"[AI回复过滤器] ❌ 群组ID未匹配到任何配置")
 
-    if config.GROUP_FILTER_MODE == "whitelist":
+    if config.GROUP_FILTER_MODE == "白名单":
         # 白名单模式：只有在列表中的群组才过滤
         result = is_in_list
         core.logger.info(f"[AI回复过滤器] 白名单模式判断结果: {'需要过滤' if result else '不需要过滤'}")
         return result
-    elif config.GROUP_FILTER_MODE == "blacklist":
+    elif config.GROUP_FILTER_MODE == "黑名单":
         # 黑名单模式：排除列表中的群组
         result = not is_in_list
         core.logger.info(f"[AI回复过滤器] 黑名单模式判断结果: {'需要过滤' if result else '不需要过滤'}")
@@ -504,8 +500,7 @@ async def initialize_plugin():
 
     core.logger.info(f"[AI回复过滤器] 私聊过滤: {'启用' if config.ENABLE_PRIVATE else '禁用'}")
     core.logger.info(f"[AI回复过滤器] 群聊过滤: {'启用' if config.ENABLE_GROUP else '禁用'}")
-    mode_text = {"disabled": "禁用", "whitelist": "白名单", "blacklist": "黑名单"}.get(config.GROUP_FILTER_MODE, config.GROUP_FILTER_MODE)
-    core.logger.info(f"[AI回复过滤器] 群组过滤模式: {mode_text}")
+    core.logger.info(f"[AI回复过滤器] 群组过滤模式: {config.GROUP_FILTER_MODE}")
     core.logger.info(f"[AI回复过滤器] 群组列表: {config.GROUP_ID_LIST}")
 
     core.logger.success(f"插件 '{plugin.name}' 初始化完成。")
