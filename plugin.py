@@ -603,41 +603,48 @@ async def wait_and_process(chat_key: str):
 
 
 async def process_merged_messages(chat_key: str):
-    """处理合并的消息并触发AI回复"""
+    """处理合并的消息并进行AI判断"""
     lock = await get_merge_lock(chat_key)
-    
+
     async with lock:
         if chat_key not in merge_tasks:
             return
-        
+
         task_info = merge_tasks[chat_key]
         messages = task_info['messages']
         ctx = task_info['ctx']
-        
+
         # 合并消息内容
         merged_texts = [msg.content_text for msg in messages]
         merged_content = "\n".join(merged_texts)
-        
+
         core.logger.info(f"[消息合并] 合并了 {len(messages)} 条消息进行处理")
         core.logger.debug(f"[消息合并] 合并内容: {merged_content[:200]}...")
-        
+
         # 清理任务
         del merge_tasks[chat_key]
-        
-        # 手动触发AI回复
-        # 使用push_system_message将合并后的内容作为系统消息推送,并触发AI
-        try:
-            from nekro_agent.services.message_service import message_service
-            
-            await message_service.push_system_message(
-                chat_key=chat_key,
-                agent_messages=f"用户连续发送了 {len(messages)} 条消息,已合并为:\n{merged_content}",
-                trigger_agent=True,
-            )
-            
-            core.logger.info(f"[消息合并] 成功触发AI回复")
-        except Exception as e:
-            core.logger.error(f"[消息合并] 触发AI回复失败: {e}", exc_info=True)
+
+        # 对合并后的内容进行AI判断
+        should_reply = await ai_should_reply(merged_content, chat_key)
+
+        if should_reply:
+            # AI判断需要回复,触发AI响应
+            core.logger.info(f"[消息合并] AI判断需要回复,触发响应")
+            try:
+                from nekro_agent.services.message_service import message_service
+
+                await message_service.push_system_message(
+                    chat_key=chat_key,
+                    agent_messages=f"用户连续发送了 {len(messages)} 条消息,已合并为:\n{merged_content}",
+                    trigger_agent=True,
+                )
+
+                core.logger.info(f"[消息合并] 成功触发AI回复")
+            except Exception as e:
+                core.logger.error(f"[消息合并] 触发AI回复失败: {e}", exc_info=True)
+        else:
+            # AI判断不需要回复
+            core.logger.info(f"[消息合并] AI判断不需要回复,忽略这批消息")
 
 
 # endregion: 消息合并逻辑
@@ -725,19 +732,18 @@ async def handle_user_message(_ctx: AgentCtx, message: ChatMessage) -> MsgSignal
         # 获取 chat_key 用于查询历史消息
         chat_key = getattr(_ctx, "chat_key", "")
 
-        # 调用AI判断
+        # 修复: 如果启用消息合并模式,直接收集消息,不立即AI判断
+        if config.ENABLE_MESSAGE_MERGE:
+            core.logger.info("[AI回复过滤器] 启用消息合并模式,先收集消息")
+            return await handle_with_merge(_ctx, message, chat_key)
+
+        # 未启用消息合并模式,立即调用AI判断
         should_reply = await ai_should_reply(message_text, chat_key)
 
         if should_reply:
-            # AI判断需要回复
-            if config.ENABLE_MESSAGE_MERGE:
-                # 使用消息合并模式
-                core.logger.info("[AI回复过滤器] AI判断:需要回复,启用消息合并模式")
-                return await handle_with_merge(_ctx, message, chat_key)
-            else:
-                # 立即触发(原有行为)
-                core.logger.info("[AI回复过滤器] AI判断:需要回复,返回FORCE_TRIGGER强制触发")
-                return MsgSignal.FORCE_TRIGGER
+            # AI判断需要回复,立即触发
+            core.logger.info("[AI回复过滤器] AI判断:需要回复,返回FORCE_TRIGGER强制触发")
+            return MsgSignal.FORCE_TRIGGER
         else:
             # AI判断不需要回复,根据完全接管模式决定返回信号
             if config.ENABLE_COMPLETE_TAKEOVER:
